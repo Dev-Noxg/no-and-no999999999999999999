@@ -7,7 +7,15 @@ import { getBuffer, isUrl, money } from '../../lib/utils.js';
 
 const TMP = path.join(os.tmpdir(), 'no-and-no-bot');
 fs.mkdirSync(TMP, { recursive: true });
-const BIN = () => (fs.existsSync('./yt-dlp.exe') ? './yt-dlp.exe' : config.ytdlp);
+
+// دعم Windows (yt-dlp.exe) و Linux (yt-dlp) تلقائياً
+const IS_WIN = process.platform === 'win32';
+const BIN = () => {
+  if (IS_WIN && fs.existsSync('./yt-dlp.exe')) return './yt-dlp.exe';
+  if (!IS_WIN && fs.existsSync('./yt-dlp')) return './yt-dlp';
+  return IS_WIN ? (config.ytdlp || 'yt-dlp.exe') : 'yt-dlp';
+};
+
 const MAX = 95 * 1024 * 1024;
 const COOKIES_PATH = path.join(process.cwd(), 'cookies.txt');
 const EXTRA_ARGS = ['--extractor-args', 'youtube:player_client=android,web'];
@@ -18,7 +26,7 @@ function ytdlp(args, timeout = 300000) {
   return new Promise((res, rej) => {
     execFile(BIN(), args, { timeout, maxBuffer: 50 * 1024 * 1024, windowsHide: true }, (err, out, errout) => {
       if (!err) return res(out);
-      if (err.code === 'ENOENT') return rej(new Error('أداة yt-dlp غير مثبتة في النظام. يرجى وضع yt-dlp.exe في مجلد البوت.'));
+      if (err.code === 'ENOENT') return rej(new Error('أداة yt-dlp غير مثبتة في النظام.'));
       rej(new Error(String(errout || err.message).split('\n').filter(Boolean).slice(-1)[0]?.slice(0, 200)));
     });
   });
