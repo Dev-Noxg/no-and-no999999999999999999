@@ -1,10 +1,24 @@
 import pino from 'pino';
 import readline from 'readline';
+import fs from 'fs';
+import path from 'path';
 import { loadCommands, uniqueCommands } from './lib/loader.js';
 import { handle } from './handler.js';
 import { onParticipants } from './lib/events.js';
 import config from './config.js';
 import { makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion } from './lib/baileys.js';
+
+// ✅ استعادة الجلسة من متغير البيئة (للنشر على Railway/Heroku)
+if (process.env.SESSION_CREDS) {
+  try {
+    fs.mkdirSync('session', { recursive: true });
+    const creds = Buffer.from(process.env.SESSION_CREDS, 'base64').toString('utf8');
+    fs.writeFileSync(path.join('session', 'creds.json'), creds);
+    console.log('✅ تم استعادة الجلسة من متغير البيئة');
+  } catch (e) {
+    console.error('❌ فشل استعادة الجلسة:', e.message);
+  }
+}
 
 const ask = q => new Promise(r => {
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
