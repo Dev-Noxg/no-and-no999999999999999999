@@ -18,7 +18,10 @@ const BIN = () => {
 
 const MAX = 95 * 1024 * 1024;
 const COOKIES_PATH = path.join(process.cwd(), 'cookies.txt');
-const EXTRA_ARGS = ['--extractor-args', 'youtube:player_client=android,web'];
+const EXTRA_ARGS = [
+  '--extractor-args', 'youtube:player_client=tv_embedded,android',
+  '--add-header', 'Accept-Language:en-us,en;q=0.5',
+];
 const withCookies = args => (fs.existsSync(COOKIES_PATH) ? ['--cookies', COOKIES_PATH, ...args] : args);
 
 function ytdlp(args, timeout = 300000) {
