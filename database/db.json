@@ -1,0 +1,100 @@
+{
+  "users": {
+    "201036042537": {
+      "money": 100,
+      "bank": 0,
+      "xp": 40,
+      "level": 1,
+      "msgs": 7,
+      "bio": "",
+      "nick": "",
+      "inv": {},
+      "stocks": {},
+      "cd": {},
+      "afk": null,
+      "married": null,
+      "birthday": null,
+      "job": null,
+      "pet": null,
+      "lastXp": 1794658632695
+    },
+    "201924162879501": {
+      "money": 300,
+      "bank": 0,
+      "xp": 109,
+      "level": 2,
+      "msgs": 25,
+      "bio": "",
+      "nick": "",
+      "inv": {},
+      "stocks": {},
+      "cd": {},
+      "afk": null,
+      "married": null,
+      "birthday": null,
+      "job": null,
+      "pet": null,
+      "lastXp": 1794658932453
+    },
+    "201201644907": {
+      "money": 1000100,
+      "bank": 0,
+      "xp": 34,
+      "level": 1,
+      "msgs": 10,
+      "bio": "",
+      "nick": "",
+      "inv": {},
+      "stocks": {},
+      "cd": {},
+      "afk": null,
+      "married": null,
+      "birthday": null,
+      "job": null,
+      "pet": null,
+      "lastXp": 1794658913783
+    },
+    "201147238808": {
+      "money": 100250,
+      "bank": 0,
+      "xp": 14,
+      "level": 1,
+      "msgs": 3,
+      "bio": "",
+      "nick": "",
+      "inv": {},
+      "stocks": {},
+      "cd": {
+        "work": 1794658566099
+      },
+      "afk": null,
+      "married": null,
+      "birthday": null,
+      "job": null,
+      "pet": null,
+      "lastXp": 1794658848756
+    }
+  },
+  "groups": {
+    "120363414278497667@g.us": {
+      "welcome": false,
+      "bye": false,
+      "welcomeMsg": "",
+      "byeMsg": "",
+      "antilink": false,
+      "rules": "",
+      "badwords": [],
+      "games": true,
+      "muted": [],
+      "banned": [],
+      "warns": {},
+      "notes": []
+    }
+  },
+  "settings": {
+    "banned": [],
+    "mode": "public",
+    "disabled": [],
+    "market": {}
+  }
+}
