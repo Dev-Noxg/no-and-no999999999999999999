@@ -1,12 +1,8 @@
 [phases.setup]
-nixPkgs = ["nodejs_20", "python3", "ffmpeg"]
+nixPkgs = ["nodejs_20", "python3", "ffmpeg", "yt-dlp"]
 
 [phases.install]
-cmds = [
-  "npm install",
-  "pip3 install yt-dlp --break-system-packages || pip install yt-dlp",
-  "ln -sf $(which yt-dlp) ./yt-dlp || true"
-]
+cmds = ["npm install"]
 
 [start]
 cmd = "node index.js"
