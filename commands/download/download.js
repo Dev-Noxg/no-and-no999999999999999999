@@ -237,7 +237,7 @@ export default [
       await sendDownloaded(c, 'video', c.text, 'فيديو');
     } },
 
-  { name: 'صوت', aliases: ['audio'], desc: 'استخراج وتحميل الصوت من أي رابط',
+  { name: 'صوت_فيديو', aliases: ['tomp3', 'استخراج_صوت', 'صوتية'], desc: 'استخراج وتحميل الصوت من أي رابط فيديو',
     async run(c) {
       if (!isUrl(c.text)) return c.reply('اكتب رابط الفيديو لاستخراج الصوت منه.');
       await sendDownloaded(c, 'audio', c.text, 'صوت');
