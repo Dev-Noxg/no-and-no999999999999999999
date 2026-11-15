@@ -1,6 +1,6 @@
 import { db, user, save } from '../../lib/db.js';
 import { proposals } from '../../lib/state.js';
-import { numOf, money, bar } from '../../lib/utils.js';
+import { numOf, money, bar, getRank } from '../../lib/utils.js';
 
 const need = lv => Math.pow(lv, 2) * 50; // XP اللازم للوصول للمستوى التالي
 
@@ -19,6 +19,7 @@ export default [
       if (u.nick) t += `│ 🏷️ اللقب: *${u.nick}*\n`;
       t += `│ 📝 النبذة: ${u.bio || 'لا توجد نبذة شخصية'}\n│\n`;
       t += `│ ⭐ المستوى: *Lv.${u.level}*\n`;
+      t += `│ 🎖️ الرتبة: *${getRank(u.level)}*\n`;
       t += `│ ✨ الخبرة: *${u.xp} / ${nextXp} XP*\n`;
       t += `│    [${xpBar}]\n│\n`;
       t += `│ 👛 المحفظة: *${money(u.money)}* 💵\n`;
@@ -159,5 +160,21 @@ export default [
   { name: 'رقمي', aliases: ['mynumber'], desc: 'عرض رقم هاتفك بالصيغة الدولية',
     async run({ sender, reply }) {
       reply(`📱 رقم هاتفك المسجل: *+${numOf(sender)}*`);
+    } },
+
+  { name: 'توب_المستويات', aliases: ['toplv', 'topxp', 'المستويات'], desc: 'عرض أعلى 10 أعضاء في المستوى والخبرة',
+    async run({ reply }) {
+      const top = Object.entries(db.users)
+        .sort((a, b) => ((b[1].level || 1) - (a[1].level || 1)) || ((b[1].xp || 0) - (a[1].xp || 0)))
+        .slice(0, 10);
+      if (!top.length) return reply('لا توجد بيانات مسجلة بعد.');
+      const medals = ['🥇', '🥈', '🥉'];
+      let t = `╭━━━〔 🏆 *قائمة أساطير المستويات* 〕━━━╮\n│\n`;
+      top.forEach(([k, u], i) => {
+        const tag = medals[i] || `[#${i + 1}]`;
+        t += `│ ${tag} @${k} ─── *Lv.${u.level || 1}* (${u.xp || 0} XP)\n`;
+      });
+      t += `│\n╰━━━━━━━━━━━━━━━━━━━━━╯`;
+      reply(t, top.map(([k]) => k + '@s.whatsapp.net'));
     } },
 ];
