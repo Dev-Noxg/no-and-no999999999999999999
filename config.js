@@ -7,6 +7,9 @@ export default {
   botNumber: process.env.BOT_NUMBER || '201036042537',
   owners: (process.env.OWNERS || '201225622948,201924162879501').split(','),
 
+  // صورة البنر لقائمة الأوامر (يمكن تغييرها برابط صورتك المفضلة)
+  menuBanner: process.env.MENU_BANNER || 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=1000&auto=format&fit=crop&q=80',
+
   // أوامر الذكاء الاصطناعي: المفتاح يقرأ من متغيرات البيئة فقط
   ai: {
     url: process.env.GROQ_API_URL || 'https://api.groq.com/openai/v1/chat/completions',
