@@ -17,6 +17,29 @@ const fancy = (txt, up, lo) => [...txt].map(ch => {
   return ch;
 }).join('');
 
+const QUOTES = [
+  ['الصبر مفتاح الفرج.', 'علي بن أبي طالب'],
+  ['لا تحسبن المجد تمراً أنت آكله، لن تبلغ المجد حتى تلعق الصبرا.', 'المتنبي'],
+  ['العلم صيد والكتابة قيده، قيّد صيودك بالحبال الواثقة.', 'الشافعي'],
+  ['من جدّ وجد، ومن زرع حصد، ومن سار على الدرب وصل.', 'حكمة عربية'],
+  ['إذا أردت أن تعيش سعيداً فاربط حياتك بأهداف لا بأشخاص أو أشياء.', 'ألبرت أينشتاين'],
+  ['لا تؤجل عمل اليوم إلى الغد.', 'مثل عربي'],
+  ['الناجحون لا ينتظرون الفرص، بل يصنعونها.', 'حكمة عالمية'],
+  ['خير الكلام ما قلّ ودل.', 'مثل عربي'],
+  ['الوقت كالسيف إن لم تقطعه قطعك.', 'حكمة مأثورة'],
+  ['الجمال ليس في الوجه؛ الجمال نور في القلب.', 'جبران خليل جبران'],
+];
+
+const JOKES = [
+  'واحد غبي راح للدكتور قاله: كل يوم قبل النوم خد حبة. قاله: وأنام إمتى؟ 😂',
+  'مرة واحد بخيل اتصل بنفسه علشان يتأكد إن خطه مش مشغول 😂',
+  'واحد قال لصاحبه: أنا عملت دايت 3 أسابيع وخسيت 3 أسابيع بس 😂',
+  'سألوا نملة: إيه أصعب حاجة؟ قالت: إني أطلع على الرخام الأملس وأنا لابسة كعب 😂',
+  'واحد راح الامتحان ملقاش حاجة يكتبها، كتب: يا رب إنت عارف 😂',
+  'المدرس: مين يقولي نص وتلت يبقى كام؟ الطالب: نص وتلت يا أستاذ 😂',
+  'واحد اشترى ساعة غالية، سأله صاحبه: بتقول الوقت صح؟ قاله: لا، بتقوله بشياكة 😂',
+];
+
 export default [
   { name: 'حاسبة', aliases: ['calc'], desc: 'حل عملية حسابية: /حاسبة 5*(3+2)',
     async run({ text, reply }) {
@@ -26,6 +49,47 @@ export default [
       const r = Function(`"use strict";return (${expr})`)();
       if (!Number.isFinite(r)) return reply('❌ الناتج غير معرّف.');
       reply(`🧮 ${text} = *${Math.round(r * 1e8) / 1e8}*`);
+    } },
+
+  { name: 'صوت', aliases: ['tts', 'نطق', 'انطق'], desc: 'تحويل النص إلى كلام صوتي طبيعي (فويس نوت)',
+    async run({ text, quotedText, reply, sock, jid, m, react }) {
+      const q = text || quotedText;
+      if (!q) return reply('💡 اكتب النص الذي تريد تحويله لصوت أو قم بالرد على رسالة.\nمثال: */صوت أهلاً بكم في بوت نو اند نو*');
+      await react('🎙️');
+      try {
+        const lang = /[a-zA-Z]/.test(q) && !/[\u0600-\u06FF]/.test(q) ? 'en' : 'ar';
+        const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(q.slice(0, 200))}&tl=${lang}&client=tw-ob`;
+        const r = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+        if (!r.ok) throw new Error('فشل جلب الصوت من الخادم');
+        const buffer = Buffer.from(await r.arrayBuffer());
+        await sock.sendMessage(jid, {
+          audio: buffer,
+          mimetype: 'audio/mp4',
+          ptt: true,
+        }, { quoted: m });
+        await react('✅');
+      } catch (e) {
+        reply(`❌ حدث خطأ: ${e.message}`);
+      }
+    } },
+
+  { name: 'حكمة', aliases: ['quote', 'اقتباس', 'مقولة'], desc: 'حكمة أو مقولة ملهمة عشوائية',
+    async run({ reply }) {
+      const [q, author] = rand(QUOTES);
+      reply(`╭━━━〔 📜 *حكمة اليوم* 〕━━━╮\n│\n│ ❝ *${q}* ❞\n│\n│ ✍️ القائل: *${author}*\n│\n╰━━━━━━━━━━━━━━━━━━━━━━╯`);
+    } },
+
+  { name: 'نكتة', aliases: ['joke', 'اضحك'], desc: 'نكتة طريفة ومضحكة',
+    async run({ reply }) {
+      reply(`😂 *نكتة اليوم:*\n\n${rand(JOKES)}`);
+    } },
+
+  { name: 'قرعة', aliases: ['raffle', 'سحب'], desc: 'إجراء قرعة وسحب عشوائي بين عدة أسماء',
+    async run({ text, reply }) {
+      const items = text.split(/[\n,،|]+/).map(s => s.trim()).filter(Boolean);
+      if (items.length < 2) return reply('💡 اكتب الأسماء مفصولة بفواصل أو شرطة |.\nمثال: */قرعة أحمد، محمد، عمر، علي*');
+      const winner = rand(items);
+      reply(`╭━━━〔 🎟️ *نتيجة القرعة العشوائية* 〕━━━╮\n│\n│ 👥 عدد المشاركين: *${items.length}*\n│ 🏆 الفائز المحظوظ هو:\n│ 👉 *${winner}* 🎉\n│\n╰━━━━━━━━━━━━━━━━━━━━━━╯`);
     } },
 
   { name: 'وقت', aliases: ['time'], desc: 'الوقت الآن في عدة مدن',
