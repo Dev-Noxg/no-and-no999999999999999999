@@ -100,10 +100,11 @@ async function start() {
       }
     });
 
-    sock.ev.on('messages.upsert', ({ messages, type }) => {
-      if (type !== 'notify') return;
+    sock.ev.on('messages.upsert', async ({ messages, type }) => {
       for (const m of messages) {
-        handle(sock, m).catch(e => console.error('Error handling message:', e));
+        if (!m?.message) continue;
+        console.log(`📩 [رسالة جديدة] من: ${m.key.remoteJid} | fromMe: ${m.key.fromMe}`);
+        handle(sock, m).catch(e => console.error('❌ خطأ في معالجة الرسالة:', e));
       }
     });
 
