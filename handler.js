@@ -3,7 +3,7 @@ import config from './config.js';
 import { commands, uniqueCommands } from './lib/loader.js';
 import { mainMenu, sectionMenu } from './lib/menu.js';
 import { db, user, group, save } from './lib/db.js';
-import { numOf, ids, randInt, money, normAr } from './lib/utils.js';
+import { numOf, ids, randInt, money, normAr, getRank } from './lib/utils.js';
 import { downloadMediaMessage } from './lib/baileys.js';
 import { pushError } from './lib/logs.js';
 import { games } from './lib/state.js';
@@ -44,10 +44,13 @@ const LINK_RE = /(https?:\/\/|chat\.whatsapp\.com|wa\.me\/)\S+/i;
 const PREFIXES = [config.prefix, '.', '!', '#', '/'].filter(Boolean);
 
 export async function handle(sock, m) {
-  if (!m.message || m.key.fromMe) return;
+  if (!m.message) return;
+  m.message = unwrap(m.message);
+  const text = textOf(m.message).trim();
+  const isCmd = PREFIXES.some(p => text.startsWith(p)) || ['اوامر', 'الاوامر', 'menu', 'help'].includes(normAr(text));
+  if (m.key.fromMe && !isCmd) return;
   const jid = m.key.remoteJid;
   if (!jid || jid === 'status@broadcast' || jid.endsWith('@newsletter')) return;
-  m.message = unwrap(m.message);
 
   const isGroup = jid.endsWith('@g.us');
   const raw = (isGroup ? [m.key.participant, m.key.participantAlt] : [jid, m.key.remoteJidAlt]).filter(Boolean);
@@ -74,14 +77,15 @@ export async function handle(sock, m) {
   if (!isOwner && db.settings.banned.includes(numOf(sender))) return;
   if (!isOwner && db.settings.mode === 'private') return;
 
-  const text = textOf(m.message).trim();
   const ci = getCI(m.message);
   const mentioned = (ci?.mentionedJid || []).map(canon);
   const u = user(sender);
   const g = isGroup ? group(jid) : null;
 
-  const reply = (t, mentions) =>
-    sock.sendMessage(jid, mentions ? { text: t, mentions } : { text: t }, { quoted: m });
+  const reply = (t, mentions) => {
+    console.log(`📤 [إرسال رد] إلى: ${jid} | المحتوى: ${String(t).slice(0, 30)}...`);
+    return sock.sendMessage(jid, mentions ? { text: t, mentions } : { text: t }, { quoted: m });
+  };
   const send = content => sock.sendMessage(jid, content, { quoted: m });
   const react = emoji => sock.sendMessage(jid, { react: { text: emoji, key: m.key } }).catch(() => {});
 
@@ -180,16 +184,35 @@ export async function handle(sock, m) {
       const bonus = lv * 100;
       u.money += bonus;
       if (isGroup) {
-        reply(`╭━━━〔 🎊 *ترقية مستوى جديدة!* 〕━━━╮\n│\n│ 🌟 مبروك يا @${numOf(sender)}!\n│ 🆙 ارتقيت إلى المستوى: *Lv.${lv}*\n│ 🎁 مكافأة الترقية: *+${money(bonus)}* 💵\n│\n╰━━━━━━━━━━━━━━━━━━━━━╯`, [sender]);
+        reply(`╭━━━〔 🎊 *ترقية مستوى جديدة!* 〕━━━╮\n│\n│ 🌟 مبروك يا @${numOf(sender)}!\n│ 🆙 ارتقيت إلى المستوى: *Lv.${lv}*\n│ 🎖️ رتبتك الآن: *${getRank(lv)}*\n│ 🎁 مكافأة الترقية: *+${money(bonus)}* 💵\n│\n╰━━━━━━━━━━━━━━━━━━━━━╯`, [sender]);
       }
     }
   }
   save();
 
-  // فحص فتح القائمة بدون بادئة (سهولة للمستخدمين)
+  const sendMainMenu = async () => {
+    const startMsgTime = m.messageTimestamp ? Number(m.messageTimestamp) * 1000 : Date.now() - 40;
+    const latency = Math.max(15, Math.min(300, Math.abs(Date.now() - startMsgTime)));
+    const menuContent = mainMenu(m.pushName || 'صديقي', u, latency);
+    if (config.menuBanner) {
+      try {
+        return await sock.sendMessage(jid, {
+          image: { url: config.menuBanner },
+          caption: menuContent,
+        }, { quoted: m });
+      } catch {}
+    }
+    return reply(menuContent);
+  };
+
+  // فحص فتح القائمة أو مناداة البوت بدون بادئة
   const normText = normAr(text);
   if (['اوامر', 'الاوامر', 'menu', 'help', 'قائمة', 'القائمة'].includes(normText)) {
-    return reply(mainMenu(m.pushName));
+    return sendMainMenu();
+  }
+
+  if (['بوت', 'bot', 'نو_اند_نو'].includes(normText)) {
+    return reply(`╭━━━〔 🤖 *بوت ${config.botName.toUpperCase()}* 〕━━━╮\n│\n│ 👋 أهلاً وسهلاً بك يا *${m.pushName || 'صديقي'}*!\n│ ⚡ أنا بوت واتساب متكامل وسريع 24/7.\n│\n│ 📜 اكتب *${config.prefix}اوامر* لتصفح قائمة الأوامر.\n│ 🤖 اكتب *${config.prefix}اسأل <سؤالك>* للذكاء الاصطناعي.\n│ 🎨 اكتب *${config.prefix}تخيل <الوصف>* لتوليد الصور.\n│ 🎵 اكتب *${config.prefix}اغنية <الاسم>* لتحميل الأغاني.\n│ 🎙️ اكتب *${config.prefix}صوت <النص>* لتحويل النص لصوت.\n│\n╰━━━━━━━━━━━━━━━━━━━━━━╯`);
   }
 
   // تحديد البادئة المستخدمة
@@ -206,9 +229,17 @@ export async function handle(sock, m) {
   const name = (rawArgs.shift() || '').toLowerCase();
   if (!name) return;
 
+  // فتح القسم مباشرة برقم مثل: .1 أو .8 أو /05
+  if (/^\d{1,2}$/.test(name)) {
+    const num = parseInt(name);
+    if (num >= 1 && num <= 16) {
+      return reply(sectionMenu(num));
+    }
+  }
+
   // عرض القوائم بالبادئة
   if (['اوامر', 'الاوامر', 'menu', 'help', 'قائمة', 'القائمة'].includes(name)) {
-    return reply(rawArgs[0] ? sectionMenu(parseInt(rawArgs[0])) : mainMenu(m.pushName));
+    return rawArgs[0] ? reply(sectionMenu(parseInt(rawArgs[0]))) : sendMainMenu();
   }
 
   // أمر البحث عن الأوامر
@@ -273,7 +304,24 @@ export async function handle(sock, m) {
     senderIds: [...new Set(sn)],
   };
 
+  const SECTION_REACTIONS = {
+    islamic: '🕌',
+    ai: '🤖',
+    games: '🎮',
+    download: '📥',
+    stickers: '🎨',
+    bank: '💰',
+    tools: '🛠️',
+    members: '👤',
+    admin: '🛡️',
+    owner: '👑',
+    groups: '👥',
+    settings: '⚙️',
+    extra: '✨',
+  };
+
   try {
+    react(SECTION_REACTIONS[cmd.section] || '⚡');
     await cmd.run(c);
   } catch (e) {
     console.error(`خطأ في تشغيل الأمر ${name}:`, e);
