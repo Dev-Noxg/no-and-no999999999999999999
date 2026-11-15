@@ -20,6 +20,16 @@ if (process.env.SESSION_CREDS) {
   }
 }
 
+// ✅ تفعيل كوكيز يوتيوب من متغير البيئة
+if (process.env.YOUTUBE_COOKIES && !fs.existsSync('cookies.txt')) {
+  try {
+    fs.writeFileSync('cookies.txt', process.env.YOUTUBE_COOKIES.trim(), 'utf8');
+    console.log('✅ تم تفعيل ملف cookies.txt من متغيرات البيئة بنجاح');
+  } catch (e) {
+    console.error('❌ فشل حفظ كوكيز يوتيوب:', e.message);
+  }
+}
+
 const ask = q => new Promise(r => {
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
   rl.question(q, a => {
