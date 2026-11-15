@@ -17,14 +17,28 @@ const BIN = () => {
 };
 const MAX = 95 * 1024 * 1024;
 const COOKIES_PATH = path.join(process.cwd(), 'cookies.txt');
-const EXTRA_ARGS = [
-  '--extractor-args', 'youtube:player_client=tv_embedded,mediaconnect',
-  '--user-agent', 'Mozilla/5.0 (ChromeOS; x86_64 15329.44.0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-];
-const withCookies = args => (fs.existsSync(COOKIES_PATH) ? ['--cookies', COOKIES_PATH, ...args] : args);
+
+function ensureCookies() {
+  if (process.env.YOUTUBE_COOKIES && (!fs.existsSync(COOKIES_PATH) || fs.statSync(COOKIES_PATH).size < 10)) {
+    try {
+      fs.writeFileSync(COOKIES_PATH, process.env.YOUTUBE_COOKIES.trim(), 'utf8');
+      console.log('✅ تم تفعيل ملف cookies.txt من متغير البيئة YOUTUBE_COOKIES بنجاح');
+    } catch (e) {
+      console.error('❌ خطأ في كتابة ملف الكوكيز:', e.message);
+    }
+  }
+  return fs.existsSync(COOKIES_PATH) && fs.statSync(COOKIES_PATH).size > 10 ? COOKIES_PATH : null;
+}
 
 function ytdlp(args, timeout = 300000) {
-  args = withCookies([...EXTRA_ARGS, ...args]);
+  const cookieFile = ensureCookies();
+  const baseArgs = ['--no-check-certificates', '--geo-bypass'];
+  if (cookieFile) {
+    baseArgs.push('--cookies', cookieFile);
+  } else {
+    baseArgs.push('--extractor-args', 'youtube:player_client=android,mweb');
+  }
+  args = [...baseArgs, ...args];
   return new Promise((res, rej) => {
     execFile(BIN(), args, { timeout, maxBuffer: 50 * 1024 * 1024, windowsHide: true }, (err, out, errout) => {
       if (!err) return res(out);
@@ -72,11 +86,13 @@ async function fetchFromInvidious(query, kind) {
 
       let streamUrl = null;
       if (kind === 'audio') {
+        // اختار أفضل صوت
         const audio = info.adaptiveFormats
           ?.filter(f => f.type?.startsWith('audio/'))
           ?.sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0))?.[0];
         streamUrl = audio?.url;
       } else {
+        // اختار أفضل فيديو بحجم معقول
         const video = info.formatStreams
           ?.filter(f => f.type?.startsWith('video/'))
           ?.sort((a, b) => parseInt(b.qualityLabel || '0') - parseInt(a.qualityLabel || '0'))?.[0];
@@ -118,6 +134,7 @@ async function fetchFile(kind, query) {
     if (!f) throw new Error('فشل التحميل');
     return path.join(TMP, f);
   } catch (e) {
+    // 🔄 لو YouTube حجب → جرب Invidious API
     if (isYouTube(query) && (e.message.includes('Sign in') || e.message.includes('bot') || e.message.includes('confirm'))) {
       console.log('⚠️ YouTube حجب yt-dlp، جاري التحويل لـ Invidious API...');
       const result = await fetchFromInvidious(query, kind);
@@ -237,6 +254,7 @@ export default [
         const out = await ytdlp(['--flat-playlist', '--no-warnings', '--print', '%(title)s | %(duration_string)s | https://youtu.be/%(id)s', `ytsearch5:${text}`], 60000);
         reply('╭━━━〔 🔎 *نتائج بحث يوتيوب* 〕━━━╮\n\n' + out.trim().split('\n').map((l, i) => `[0${i + 1}] ${l}`).join('\n\n') + '\n\n╰━━━━━━━━━━━━━━━━━━━━━━╯');
       } catch {
+        // فولباك: Invidious API
         for (const inst of INVIDIOUS_INSTANCES) {
           try {
             const r = await fetch(`${inst}/api/v1/search?q=${encodeURIComponent(text)}&type=video`, { signal: AbortSignal.timeout(10000) });
@@ -261,6 +279,7 @@ export default [
         const j = JSON.parse(await ytdlp(['--dump-single-json', '--no-playlist', '--skip-download', '--no-warnings', text], 90000));
         reply(`╭━━━〔 🎬 *بيانات الفيديو* 〕━━━╮\n│\n│ 📌 العنوان: *${j.title}*\n│ 👤 القناة: *${j.uploader || '-'}*\n│ ⏱️ المدة: *${j.duration_string || '-'}*\n│ 👁️ المشاهدات: *${money(j.view_count)}*\n│ 📅 التاريخ: *${j.upload_date || '-'}*\n│\n╰━━━━━━━━━━━━━━━━━━━━━━╯`);
       } catch {
+        // فولباك: Invidious
         const urlMatch = text.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|shorts\/|embed\/))([a-zA-Z0-9_-]{11})/);
         if (!urlMatch) return reply('❌ رابط يوتيوب غير صالح.');
         for (const inst of INVIDIOUS_INSTANCES) {
