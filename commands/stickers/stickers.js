@@ -57,13 +57,19 @@ async function image(getMedia, reply, types = ['imageMessage', 'stickerMessage']
 }
 
 export default [
-  { name: 'ملصق', aliases: ['sticker', 's', 'استيكر'], desc: 'تحويل أي صورة لملصق واتساب (ارد على صورة)',
-    async run({ getMedia, send, reply, react }) {
+  { name: 'ملصق', aliases: ['sticker', 's', 'استيكر'], desc: 'تحويل أي صورة لملصق (حقوق مخصصة: /ملصق البكج | المطور)',
+    async run({ text, getMedia, send, reply, react }) {
       const b = await image(getMedia, reply);
       if (!b) return;
       await react('🎨');
-      const stickerBuf = await toSticker(b);
-      await send({ sticker: stickerBuf });
+      let pack = config.botName, author = config.developer;
+      if (text && text.includes('|')) {
+        const parts = text.split('|').map(s => s.trim());
+        if (parts[0]) pack = parts[0];
+        if (parts[1]) author = parts[1];
+      }
+      const webp = await sharp(b).resize(512, 512, { fit: 'contain', background: CLEAR }).webp().toBuffer();
+      await send({ sticker: addExif(webp, pack, author) });
     } },
 
   { name: 'لصورة', aliases: ['toimg'], desc: 'تحويل ملصق إلى صورة عادية (ارد على ملصق)',
