@@ -84,12 +84,43 @@ export default [
       reply(`😂 *نكتة اليوم:*\n\n${rand(JOKES)}`);
     } },
 
-  { name: 'قرعة', aliases: ['raffle', 'سحب'], desc: 'إجراء قرعة وسحب عشوائي بين عدة أسماء',
-    async run({ text, reply }) {
-      const items = text.split(/[\n,،|]+/).map(s => s.trim()).filter(Boolean);
-      if (items.length < 2) return reply('💡 اكتب الأسماء مفصولة بفواصل أو شرطة |.\nمثال: */قرعة أحمد، محمد، عمر، علي*');
-      const winner = rand(items);
-      reply(`╭━━━〔 🎟️ *نتيجة القرعة العشوائية* 〕━━━╮\n│\n│ 👥 عدد المشاركين: *${items.length}*\n│ 🏆 الفائز المحظوظ هو:\n│ 👉 *${winner}* 🎉\n│\n╰━━━━━━━━━━━━━━━━━━━━━━╯`);
+  { name: 'ويكيبيديا', aliases: ['wiki', 'معلومات', 'موسوعة'], desc: 'البحث في ويكيبيديا العربية: /ويكيبيديا الأهرامات',
+    async run({ text, send, reply, react }) {
+      if (!text) return reply('💡 اكتب اسم الموضوع أو الشخصية للبحث في الموسوعة.\nمثال: */ويكيبيديا أحمد زويل*');
+      await react('📚');
+      try {
+        const j = await getJson(`https://ar.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(text)}`);
+        if (!j || j.type === 'https://mediawiki.org/wiki/HyperSwitch/errors/not_found') {
+          return reply(`❌ لم يتم العثور على مقال في ويكيبيديا بعنوان: "*${text}*". حاول بصيغة أخرى.`);
+        }
+        let msg = `╭━━━〔 📖 *${j.title}* 〕━━━╮\n\n`;
+        msg += `${j.extract || 'لا يوجد ملخص متاح.'}\n\n`;
+        if (j.content_urls?.desktop?.page) {
+          msg += `🔗 *رابط المقال:* ${j.content_urls.desktop.page}\n`;
+        }
+        msg += `╰━━━━━━━━━━━━━━━━━━━━━━╯`;
+
+        if (j.thumbnail?.source) {
+          await send({ image: { url: j.thumbnail.source }, caption: msg });
+        } else {
+          reply(msg);
+        }
+        await react('✅');
+      } catch (e) {
+        reply(`❌ حدث خطأ أثناء البحث: ${e.message}`);
+      }
+    } },
+
+  { name: 'افتار', aliases: ['avatar', 'خلفية', 'صورة_عشوائية'], desc: 'صورة شخصية / افتار عشوائي بجودة عالية HD',
+    async run({ send, reply, react }) {
+      await react('🖼️');
+      try {
+        const seed = Math.floor(Math.random() * 100000);
+        const url = `https://picsum.photos/seed/${seed}/800/800`;
+        await send({ image: { url }, caption: `╭━━━〔 🖼️ *افتار عالي الدقة HD* 〕━━━╮\n│\n│ ✨ صورة عشوائية مناسبة للبروفايل.\n│\n╰━━━━━━━━━━━━━━━━━━━━━━╯` });
+      } catch {
+        reply('❌ تعذر جلب الصورة، حاول مجدداً.');
+      }
     } },
 
   { name: 'وقت', aliases: ['time'], desc: 'الوقت الآن في عدة مدن',
