@@ -50,7 +50,7 @@ function ytdlp(args, timeout = 300000) {
 }
 
 // ═══════════════════════════════════════════════════
-// 🔄 بديل يوتيوب: Invidious API
+// 🔄 بديل يوتيوب: Invidious API (لما yt-dlp يتحجب)
 // ═══════════════════════════════════════════════════
 const INVIDIOUS_INSTANCES = [
   'https://inv.nadeko.net',
@@ -62,6 +62,7 @@ const INVIDIOUS_INSTANCES = [
 async function fetchFromInvidious(query, kind) {
   let videoId = null;
 
+  // لو رابط يوتيوب → استخرج الـ ID
   const urlMatch = query.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|shorts\/|embed\/))([a-zA-Z0-9_-]{11})/);
   if (urlMatch) {
     videoId = urlMatch[1];
@@ -69,6 +70,7 @@ async function fetchFromInvidious(query, kind) {
 
   for (const instance of INVIDIOUS_INSTANCES) {
     try {
+      // لو مش رابط → ابحث الأول
       if (!videoId) {
         const searchRes = await fetch(`${instance}/api/v1/search?q=${encodeURIComponent(query)}&type=video`, { signal: AbortSignal.timeout(15000) });
         if (!searchRes.ok) continue;
@@ -77,17 +79,20 @@ async function fetchFromInvidious(query, kind) {
         videoId = results[0].videoId;
       }
 
+      // جيب بيانات الفيديو
       const infoRes = await fetch(`${instance}/api/v1/videos/${videoId}`, { signal: AbortSignal.timeout(15000) });
       if (!infoRes.ok) { videoId = null; continue; }
       const info = await infoRes.json();
 
       let streamUrl = null;
       if (kind === 'audio') {
+        // اختار أفضل صوت
         const audio = info.adaptiveFormats
           ?.filter(f => f.type?.startsWith('audio/'))
           ?.sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0))?.[0];
         streamUrl = audio?.url;
       } else {
+        // اختار أفضل فيديو بحجم معقول
         const video = info.formatStreams
           ?.filter(f => f.type?.startsWith('video/'))
           ?.sort((a, b) => parseInt(b.qualityLabel || '0') - parseInt(a.qualityLabel || '0'))?.[0];
@@ -133,6 +138,7 @@ async function fetchFile(kind, query) {
     if (!f) throw new Error('فشل التحميل');
     return path.join(TMP, f);
   } catch (e) {
+    // لو فشل البحث عن الصوت، جرب يوتيوب كاحتياطي
     if (kind === 'audio' && !isUrl(query) && !query.startsWith('ytsearch')) {
       try {
         console.log('🔄 جاري المحاولة من مصدر يوتيوب...');
@@ -222,8 +228,8 @@ export default [
   { name: 'يوتيوب', aliases: ['yt', 'ytv'], desc: 'تحميل فيديو من يوتيوب (رابط أو اسم)',
     async run(c) { await sendDownloaded(c, 'video', c.text, 'يوتيوب'); } },
 
-  { name: 'اغنية', aliases: ['play', 'song', 'شيلة'], desc: 'تحميل أغنية/صوت (اسم أو رابط)',
-    async run(c) { await sendDownloaded(c, 'audio', c.text, 'أغنية'); } },
+  { name: 'اغنية', aliases: ['play', 'song', 'شيلة'], desc: 'تحميل أغنية/صوت من يوتيوب (اسم أو رابط)',
+    async run(c) { await sendDownloaded(c, 'audio', c.text, 'يوتيوب'); } },
 
   { name: 'فيديو', aliases: ['video'], desc: 'تحميل فيديو من أي رابط مدعوم',
     async run(c) {
@@ -254,6 +260,7 @@ export default [
         const out = await ytdlp(['--flat-playlist', '--no-warnings', '--print', '%(title)s | %(duration_string)s | https://youtu.be/%(id)s', `ytsearch5:${text}`], 60000);
         reply('╭━━━〔 🔎 *نتائج بحث يوتيوب* 〕━━━╮\n\n' + out.trim().split('\n').map((l, i) => `[0${i + 1}] ${l}`).join('\n\n') + '\n\n╰━━━━━━━━━━━━━━━━━━━━━━╯');
       } catch {
+        // فولباك: Invidious API
         for (const inst of INVIDIOUS_INSTANCES) {
           try {
             const r = await fetch(`${inst}/api/v1/search?q=${encodeURIComponent(text)}&type=video`, { signal: AbortSignal.timeout(10000) });
@@ -278,6 +285,7 @@ export default [
         const j = JSON.parse(await ytdlp(['--dump-single-json', '--no-playlist', '--skip-download', '--no-warnings', text], 90000));
         reply(`╭━━━〔 🎬 *بيانات الفيديو* 〕━━━╮\n│\n│ 📌 العنوان: *${j.title}*\n│ 👤 القناة: *${j.uploader || '-'}*\n│ ⏱️ المدة: *${j.duration_string || '-'}*\n│ 👁️ المشاهدات: *${money(j.view_count)}*\n│ 📅 التاريخ: *${j.upload_date || '-'}*\n│\n╰━━━━━━━━━━━━━━━━━━━━━━╯`);
       } catch {
+        // فولباك: Invidious
         const urlMatch = text.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|shorts\/|embed\/))([a-zA-Z0-9_-]{11})/);
         if (!urlMatch) return reply('❌ رابط يوتيوب غير صالح.');
         for (const inst of INVIDIOUS_INSTANCES) {
