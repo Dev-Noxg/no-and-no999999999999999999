@@ -69,7 +69,7 @@ async function start() {
     console.log(`👑 المطور: ${config.developer}`);
     console.log(`========================================\n`);
 
-    // فحص ما إذا كانت الجلسة مسجلة أو تالفة ومسح محتوياتها بأمان
+    // فحص ما إذا كانت الجلسة مسجلة أو تالفة
     if (fs.existsSync('session/creds.json')) {
       try {
         const raw = JSON.parse(fs.readFileSync('session/creds.json', 'utf8') || '{}');
