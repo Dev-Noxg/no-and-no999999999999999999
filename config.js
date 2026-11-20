@@ -5,7 +5,7 @@ export default {
   developer: 'no and no',
   prefix: '/',
   botNumber: process.env.BOT_NUMBER || '201558086457',
-  owners: (process.env.OWNERS || '201225622948,201924162879501').split(','),
+  owners: (process.env.OWNERS || '201558086457,'201225622948,201924162879501').split(','),
 
   // قناة واتساب الرسمية للتحديثات والأوامر الجديدة
   channelLink: 'https://whatsapp.com/channel/0029VbBvRjeHrDZmSEd8sV12',
