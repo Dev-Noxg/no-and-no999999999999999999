@@ -22,7 +22,7 @@ async function askFreePollinations(system, prompt) {
   return null;
 }
 
-async function ask(system, prompt) {
+export async function ask(system, prompt) {
   const { url, key } = config.ai;
 
   if (key) {
