@@ -7,6 +7,20 @@ import { handle } from './handler.js';
 import { onParticipants } from './lib/events.js';
 import config from './config.js';
 import { makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion } from './lib/baileys.js';
+import { startWebServer, reloadExistingSubBots } from './lib/subbot_server.js';
+
+let webServerStarted = false;
+function ensureWebServer() {
+  if (!webServerStarted) {
+    webServerStarted = true;
+    try {
+      startWebServer();
+      reloadExistingSubBots().catch(() => {});
+    } catch (e) {
+      console.error('تحذير تشغيل سيرفر الويب:', e.message);
+    }
+  }
+}
 
 // دالة آمنة لمسح محتويات الجلسة دون حذف مجلد الـ Volume لتجنب خطأ EBUSY
 function clearSessionFiles() {
@@ -63,6 +77,7 @@ async function start() {
 
   try {
     await loadCommands();
+    ensureWebServer();
     console.log(`\n========================================`);
     console.log(`🚀 [${config.botName.toUpperCase()}] - جاري بدء التشغيل...`);
     console.log(`📦 تم تحميل ${uniqueCommands().length} أمر بنجاح`);
