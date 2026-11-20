@@ -1,6 +1,6 @@
 import { ask } from '../ai/ai.js';
 import { getThemeBanner } from '../../lib/theme_engine.js';
-import { rand } from '../../lib/utils.js';
+import { rand, safeSendAudio } from '../../lib/utils.js';
 
 const SCARY_SOUNDS = [
   'https://www.myinstants.com/media/sounds/scary-sound-effect.mp3',
@@ -63,11 +63,7 @@ export default [
       try {
         const res = await fetch(soundUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } });
         const buf = Buffer.from(await res.arrayBuffer());
-        await sock.sendMessage(jid, {
-          audio: buf,
-          mimetype: 'audio/mpeg',
-          ptt: true,
-        }, { quoted: m });
+        await safeSendAudio(sock, jid, buf, { ptt: true }, m);
         await react('💀');
       } catch (e) {
         reply(`❌ فشل استدعاء الصوت المرعب: ${e.message}`);

@@ -1,7 +1,7 @@
 import { db, save } from '../../lib/db.js';
 import { commands } from '../../lib/loader.js';
 import { getThemeBanner } from '../../lib/theme_engine.js';
-import { numOf, sleep } from '../../lib/utils.js';
+import { numOf, sleep, safeSendAudio } from '../../lib/utils.js';
 import { ask } from '../ai/ai.js';
 
 export default [
@@ -136,11 +136,7 @@ export default [
       try {
         const res = await fetch(audioUrl);
         const buf = Buffer.from(await res.arrayBuffer());
-        await sock.sendMessage(jid, {
-          audio: buf,
-          mimetype: 'audio/mpeg',
-          ptt: true,
-        }, { quoted: m });
+        await safeSendAudio(sock, jid, buf, { ptt: true }, m);
 
         reply(`╭───〔 📢 *بيان رسمي من المطور* 〕───╮\n│\n│ "${speechText}"\n│\n╰────────────────────────────╯`);
       } catch (e) {

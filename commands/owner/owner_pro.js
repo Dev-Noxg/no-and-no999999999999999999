@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import config from '../../config.js';
 import { db, save, saveNow, dbFile } from '../../lib/db.js';
-import { numOf, sleep, money, fmtDur } from '../../lib/utils.js';
+import { numOf, sleep, money, fmtDur, safeSendAudio } from '../../lib/utils.js';
 import { commands, loadCommands } from '../../lib/loader.js';
 import { ask } from '../ai/ai.js';
 
@@ -223,11 +223,7 @@ export default [
         const r = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
         if (!r.ok) throw new Error('فشل جلب الصوت');
         const buffer = Buffer.from(await r.arrayBuffer());
-        await sock.sendMessage(jid, {
-          audio: buffer,
-          mimetype: 'audio/mp4',
-          ptt: true,
-        }, { quoted: m });
+        await safeSendAudio(sock, jid, buffer, { ptt: true }, m);
       } catch (e) {
         reply(`❌ فشل الاتصال الصوتي: ${e.message}`);
       }

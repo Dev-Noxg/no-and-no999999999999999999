@@ -1,4 +1,4 @@
-import { numOf, isUrl, getBuffer, getJson, money } from '../../lib/utils.js';
+import { numOf, isUrl, getBuffer, getJson, money, safeSendAudio } from '../../lib/utils.js';
 
 export default [
   {
@@ -64,11 +64,7 @@ export default [
       const media = await getMedia(['audioMessage', 'videoMessage']);
       if (!media) return reply('↩️ يرجى الرد على تسجيل صوتي (ريكورد) أو ملف صوتي لتنقيته.');
       await react('🎙️');
-      await send({
-        audio: media.buffer,
-        mimetype: 'audio/ogg; codecs=opus',
-        ptt: true,
-      });
+      await safeSendAudio(sock, jid, media.buffer, { ptt: true });
       reply('✅ تم تنقية وإعادة إرسال الصوت كرسالة صوتية (Voice Note).');
     },
   },
@@ -86,9 +82,9 @@ export default [
 
       await react('🔄');
       if (['صوت', 'mp3', 'audio'].includes(type)) {
-        await send({ audio: media.buffer, mimetype: 'audio/mpeg', fileName: 'audio.mp3' });
+        await safeSendAudio(sock, jid, media.buffer, { ptt: false, fileName: 'audio.mp3' });
       } else if (['ريكورد', 'vn', 'ptt', 'بصمة'].includes(type)) {
-        await send({ audio: media.buffer, mimetype: 'audio/ogg; codecs=opus', ptt: true });
+        await safeSendAudio(sock, jid, media.buffer, { ptt: true });
       } else if (['مستند', 'doc', 'document', 'ملف'].includes(type)) {
         await send({ document: media.buffer, mimetype: media.mime || 'application/octet-stream', fileName: `file_${Date.now()}` });
       } else {
