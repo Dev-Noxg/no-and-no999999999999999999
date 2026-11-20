@@ -2,11 +2,63 @@ import pino from 'pino';
 import readline from 'readline';
 import fs from 'fs';
 import path from 'path';
+
+// نظام حماية متقدم ضد أخطاء تشفير الواتساب (Bad MAC / SessionError) لمنع انهيار البوت تلقائياً
+const isIgnorableError = (err) => {
+  const msg = err?.message || String(err || '');
+  const stack = err?.stack || '';
+  return (
+    msg.includes('Bad MAC') ||
+    msg.includes('decryption') ||
+    msg.includes('SessionError') ||
+    msg.includes('No matching sessions') ||
+    msg.includes('Session error') ||
+    msg.includes('PreKey') ||
+    msg.includes('Closing session') ||
+    stack.includes('session_cipher') ||
+    stack.includes('libsignal')
+  );
+};
+
+process.on('uncaughtException', err => {
+  if (isIgnorableError(err)) return;
+  console.error('UncaughtException:', err?.message || err);
+});
+process.on('unhandledRejection', err => {
+  const stack = err?.stack || '';
+  const match = stack.match(/session-([0-9.]+)\.json/) || stack.match(/([0-9]{10,}\.[0-9]+)/);
+  if (match && match[1]) {
+    try {
+      const badFile = path.join('session', `session-${match[1]}.json`);
+      if (fs.existsSync(badFile)) {
+        fs.unlinkSync(badFile);
+        console.log(`🧹 تم إزالة ملف الجلسة التالف تلقائياً لتجديد التشفير: ${badFile}`);
+      }
+    } catch {}
+  }
+  if (isIgnorableError(err)) return;
+  console.error('UnhandledRejection:', err?.message || err);
+});
+
+// اعتراض console.error لمنع سيل رسائل Bad MAC من libsignal من إغراق سجلات السيرفر
+const originalConsoleError = console.error;
+console.error = function (...args) {
+  const first = String(args[0] || '');
+  if (
+    first.includes('Bad MAC') ||
+    first.includes('Failed to decrypt message') ||
+    first.includes('Session error:Error: Bad MAC') ||
+    first.includes('No matching sessions found')
+  ) {
+    return; // كتم التحذير لضمان هدوء السجلات واستقرار السيرفر
+  }
+  originalConsoleError.apply(console, args);
+};
 import { loadCommands, uniqueCommands } from './lib/loader.js';
 import { handle } from './handler.js';
 import { onParticipants } from './lib/events.js';
 import config from './config.js';
-import { makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion } from './lib/baileys.js';
+import { makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion, makeCacheableSignalKeyStore } from './lib/baileys.js';
 import { startWebServer, reloadExistingSubBots } from './lib/subbot_server.js';
 
 let webServerStarted = false;
@@ -84,12 +136,25 @@ async function start() {
     console.log(`👑 المطور: ${config.developer}`);
     console.log(`========================================\n`);
 
-    // فحص ما إذا كانت الجلسة مسجلة أو تالفة
+    // مسح الجلسة إجبارياً إذا تم طلب ذلك عبر متغير البيئة
+    if (process.env.CLEAR_SESSION === 'true') {
+      clearSessionFiles();
+    }
+
+    // فحص ما إذا كانت الجلسة مسجلة أو تالفة أو تابعة لرقم قديم مختلف
     if (fs.existsSync('session/creds.json')) {
       try {
         const raw = JSON.parse(fs.readFileSync('session/creds.json', 'utf8') || '{}');
         if (!raw.registered) {
           clearSessionFiles();
+        } else {
+          const credPhone = raw.me?.id ? raw.me.id.split(':')[0].split('@')[0].replace(/\D/g, '') : '';
+          const targetPhone = config.botNumber ? config.botNumber.replace(/\D/g, '') : '';
+          if (credPhone && targetPhone && credPhone !== targetPhone) {
+            console.log(`⚠️ تم اكتشاف جلسة قديمة تابعة لرقم (+${credPhone}) بينما رقم البوت المطلوب (+${targetPhone}).`);
+            console.log(`🧹 جاري مسح الجلسة القديمة تلقائياً لطلب كود ربط جديد نظيف للرقم الصحيح...`);
+            clearSessionFiles();
+          }
         }
       } catch {
         clearSessionFiles();
@@ -104,12 +169,22 @@ async function start() {
       if (v?.version) version = v.version;
     } catch {}
 
+    const msgRetryCounterCache = new Map();
+
     const sock = makeWASocket({
       version,
-      auth: state,
+      auth: {
+        creds: state.creds,
+        keys: makeCacheableSignalKeyStore(state.keys, pino({ level: 'silent' })),
+      },
       logger: pino({ level: 'silent' }),
       printQRInTerminal: false,
       browser: ['Ubuntu', 'Chrome', '20.0.04'],
+      markOnlineOnConnect: true,
+      syncFullHistory: false,
+      msgRetryCounterCache,
+      getMessage: async key => ({ conversation: '' }),
+      shouldIgnoreJid: jid => jid?.endsWith('@broadcast') || jid?.includes('status'),
     });
 
     sock.ev.on('creds.update', saveCreds);
