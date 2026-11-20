@@ -7,6 +7,7 @@ import { numOf, ids, randInt, money, normAr, getRank } from './lib/utils.js';
 import { downloadMediaMessage } from './lib/baileys.js';
 import { pushError } from './lib/logs.js';
 import { games } from './lib/state.js';
+import { getHorrorBanner, getHorrorReaction } from './lib/horror_theme.js';
 
 const logger = pino({ level: 'silent' });
 const metaCache = new Map();
@@ -74,8 +75,13 @@ export async function handle(sock, m) {
   }
 
   const isOwner = sn.some(n => config.owners.includes(n));
-  if (!isOwner && db.settings.banned.includes(numOf(sender))) return;
-  if (!isOwner && db.settings.mode === 'private') return;
+  const assistantData = db.settings.assistants?.[sender] || db.settings.assistants?.[numOf(sender) + '@s.whatsapp.net'] || null;
+  const isAssistant = Boolean(assistantData);
+  const assistantPerms = assistantData?.perms || [];
+
+  const isBanned = (db.settings.banned || []).some(b => sn.includes(numOf(b)) || b === sender || b === numOf(sender));
+  if (!isOwner && isBanned) return;
+  if (!isOwner && !isAssistant && db.settings.mode === 'private') return;
 
   const ci = getCI(m.message);
   const mentioned = (ci?.mentionedJid || []).map(canon);
@@ -194,14 +200,13 @@ export async function handle(sock, m) {
     const startMsgTime = m.messageTimestamp ? Number(m.messageTimestamp) * 1000 : Date.now() - 40;
     const latency = Math.max(15, Math.min(300, Math.abs(Date.now() - startMsgTime)));
     const menuContent = mainMenu(m.pushName || 'صديقي', u, latency);
-    if (config.menuBanner) {
-      try {
-        return await sock.sendMessage(jid, {
-          image: { url: config.menuBanner },
-          caption: menuContent,
-        }, { quoted: m });
-      } catch {}
-    }
+    const banner = getHorrorBanner();
+    try {
+      return await sock.sendMessage(jid, {
+        image: { url: banner },
+        caption: menuContent,
+      }, { quoted: m });
+    } catch {}
     return reply(menuContent);
   };
 
@@ -212,7 +217,24 @@ export async function handle(sock, m) {
   }
 
   if (['بوت', 'bot', 'نو_اند_نو'].includes(normText)) {
-    return reply(`╭━━━〔 🤖 *بوت ${config.botName.toUpperCase()}* 〕━━━╮\n│\n│ 👋 أهلاً وسهلاً بك يا *${m.pushName || 'صديقي'}*!\n│ ⚡ أنا بوت واتساب متكامل وسريع 24/7.\n│\n│ 📜 اكتب *${config.prefix}اوامر* لتصفح قائمة الأوامر.\n│ 🤖 اكتب *${config.prefix}اسأل <سؤالك>* للذكاء الاصطناعي.\n│ 🎨 اكتب *${config.prefix}تخيل <الوصف>* لتوليد الصور.\n│ 🎵 اكتب *${config.prefix}اغنية <الاسم>* لتحميل الأغاني.\n│ 🎙️ اكتب *${config.prefix}صوت <النص>* لتحويل النص لصوت.\n│\n╰━━━━━━━━━━━━━━━━━━━━━━╯`);
+    const banner = getHorrorBanner();
+    const botText = `╭───〔 💀 *NO & NO DARK HORROR EDITION* 〕───╮\n│\n` +
+      `│ 🩸 أهلاً بك يا *${m.pushName || 'صديقي'}* في نظام الرعب والسرعة!\n` +
+      `│ ⚡ البوت يعمل 24/7 بأعلى استقرار وسرعة فائقة.\n│\n` +
+      `│ 📜 اكتب *${config.prefix}اوامر* لتصفح كافة الأقسام.\n` +
+      `│ 🧠 اكتب *${config.prefix}شات <رسالتك>* لمحادثة الذكاء الاصطناعي مع حفظ الذاكرة.\n` +
+      `│ 🎨 اكتب *${config.prefix}تخيل <الوصف>* لتوليد صور بجودة سينمائية.\n` +
+      `│ 🎵 اكتب *${config.prefix}اغنية <الاسم>* لتحميل فوري للأغاني.\n` +
+      `│ 🎙️ اكتب *${config.prefix}صوت <النص>* لتحويل النص لصوت حقيقي.\n│\n` +
+      `╰────────────────────────────╯`;
+    try {
+      return await sock.sendMessage(jid, {
+        image: { url: banner },
+        caption: botText,
+      }, { quoted: m });
+    } catch {
+      return reply(botText);
+    }
   }
 
   // تحديد البادئة المستخدمة
@@ -267,7 +289,23 @@ export async function handle(sock, m) {
   if (!isOwner && (db.settings.disabled || []).includes(cmd.name)) {
     return reply('🚫 هذا الأمر معطّل مؤقتاً من قِبل إدارة البوت.');
   }
-  if (cmd.owner && !isOwner) return reply('⛔ هذا الأمر مخصص لمطور البوت فقط.');
+
+  if (cmd.owner && !isOwner) {
+    let allowedForAssistant = false;
+    if (isAssistant) {
+      if (assistantPerms.includes('كاملة')) allowedForAssistant = true;
+      else if (assistantPerms.includes('بث') && ['بث', 'بث_جروبات', 'broadcast', 'bc'].includes(cmd.name)) allowedForAssistant = true;
+      else if (assistantPerms.includes('طرد') && ['طرد', 'kick'].includes(cmd.name)) allowedForAssistant = true;
+      else if (assistantPerms.includes('حظر') && ['حظر', 'حظر_عام', 'gban', 'ban'].includes(cmd.name)) allowedForAssistant = true;
+      else if (assistantPerms.includes('قفل') && ['قفل_الجروب', 'فتح_الجروب', 'قفل_البوت', 'فتح_البوت'].includes(cmd.name)) allowedForAssistant = true;
+      else if (assistantPerms.includes('ريستارت') && ['اعادة_تشغيل', 'restart', 'ريستارت'].includes(cmd.name)) allowedForAssistant = true;
+      else if (assistantPerms.includes('تحديث') && ['حدث_نفسك', 'update_bot', 'تحديث_فوري'].includes(cmd.name)) allowedForAssistant = true;
+    }
+    if (!allowedForAssistant) {
+      return reply(isAssistant ? '⛔ ليس لديك الصلاحية المحددة لاستخدام هذا الأمر.' : '⛔ هذا الأمر مخصص لمطور البوت فقط.');
+    }
+  }
+
   if (cmd.group && !isGroup) return reply('⛔ هذا الأمر مخصص للمجموعات فقط.');
   if (cmd.admin && !(isAdmin || isOwner)) return reply('⛔ هذا الأمر مخصص لمشرفي المجموعة فقط.');
   if (cmd.botAdmin && !isBotAdmin) return reply('⚠️ يجب ترقية البوت لمشرف أولاً ليتمكن من تنفيذ هذا الأمر.');
@@ -321,7 +359,8 @@ export async function handle(sock, m) {
   };
 
   try {
-    react(SECTION_REACTIONS[cmd.section] || '⚡');
+    const horrorReaction = getHorrorReaction();
+    react(horrorReaction || SECTION_REACTIONS[cmd.section] || '⚡');
     await cmd.run(c);
   } catch (e) {
     console.error(`خطأ في تشغيل الأمر ${name}:`, e);
