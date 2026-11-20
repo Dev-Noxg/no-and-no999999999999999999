@@ -7,7 +7,7 @@ import { numOf, ids, randInt, money, normAr, getRank } from './lib/utils.js';
 import { downloadMediaMessage } from './lib/baileys.js';
 import { pushError } from './lib/logs.js';
 import { games } from './lib/state.js';
-import { getHorrorBanner, getHorrorReaction } from './lib/horror_theme.js';
+import { getActiveTheme, getThemeBanner, getThemeReaction, isCardImageEnabled } from './lib/theme_engine.js';
 
 const logger = pino({ level: 'silent' });
 const metaCache = new Map();
@@ -90,6 +90,25 @@ export async function handle(sock, m) {
 
   const reply = (t, mentions) => {
     console.log(`📤 [إرسال رد] إلى: ${jid} | المحتوى: ${String(t).slice(0, 30)}...`);
+    const activeTheme = getActiveTheme();
+    if (isCardImageEnabled()) {
+      const banner = getThemeBanner();
+      const payload = {
+        text: t,
+        contextInfo: {
+          externalAdReply: {
+            title: activeTheme.title,
+            body: activeTheme.subtitle,
+            thumbnailUrl: banner,
+            sourceUrl: 'https://whatsapp.com',
+            mediaType: 1,
+            renderLargerThumbnail: true,
+          },
+        },
+      };
+      if (mentions) payload.mentions = mentions;
+      return sock.sendMessage(jid, payload, { quoted: m });
+    }
     return sock.sendMessage(jid, mentions ? { text: t, mentions } : { text: t }, { quoted: m });
   };
   const send = content => sock.sendMessage(jid, content, { quoted: m });
@@ -97,6 +116,15 @@ export async function handle(sock, m) {
 
   // ===== حماية المجموعات (قبل الأوامر) =====
   if (isGroup && !isAdmin && !isOwner) {
+    if (g.frozen && isBotAdmin) {
+      await sock.sendMessage(jid, { delete: m.key }).catch(() => {});
+      return;
+    }
+    const gBad = db.settings.globalBadwords || [];
+    if (gBad.some(w => text.toLowerCase().includes(w))) {
+      if (isBotAdmin) await sock.sendMessage(jid, { delete: m.key }).catch(() => {});
+      return;
+    }
     if (g.muted.includes(numOf(sender))) {
       if (isBotAdmin) await sock.sendMessage(jid, { delete: m.key }).catch(() => {});
       return;
@@ -200,7 +228,7 @@ export async function handle(sock, m) {
     const startMsgTime = m.messageTimestamp ? Number(m.messageTimestamp) * 1000 : Date.now() - 40;
     const latency = Math.max(15, Math.min(300, Math.abs(Date.now() - startMsgTime)));
     const menuContent = mainMenu(m.pushName || 'صديقي', u, latency);
-    const banner = getHorrorBanner();
+    const banner = getThemeBanner();
     try {
       return await sock.sendMessage(jid, {
         image: { url: banner },
@@ -217,15 +245,17 @@ export async function handle(sock, m) {
   }
 
   if (['بوت', 'bot', 'نو_اند_نو'].includes(normText)) {
-    const banner = getHorrorBanner();
-    const botText = `╭───〔 💀 *NO & NO DARK HORROR EDITION* 〕───╮\n│\n` +
-      `│ 🩸 أهلاً بك يا *${m.pushName || 'صديقي'}* في نظام الرعب والسرعة!\n` +
+    const theme = getActiveTheme();
+    const banner = getThemeBanner();
+    const botText = `╭───〔 ${theme.title} 〕───╮\n│\n` +
+      `│ ${theme.decor} أهلاً بك يا *${m.pushName || 'صديقي'}* في ${theme.name}!\n` +
       `│ ⚡ البوت يعمل 24/7 بأعلى استقرار وسرعة فائقة.\n│\n` +
       `│ 📜 اكتب *${config.prefix}اوامر* لتصفح كافة الأقسام.\n` +
-      `│ 🧠 اكتب *${config.prefix}شات <رسالتك>* لمحادثة الذكاء الاصطناعي مع حفظ الذاكرة.\n` +
+      `│ 🎭 اكتب *${config.prefix}مود* لتغيير شكل وثيم البوت (رعب، سايبر، أنمي، فخامة).\n` +
+      `│ 🎙️ اكتب *${config.prefix}صوت_تيك <الاسم>* لريكوردات وتريندات التيك توك.\n` +
+      `│ 🧠 اكتب *${config.prefix}شات <رسالتك>* لمحادثة ذكية مع حفظ الذاكرة.\n` +
       `│ 🎨 اكتب *${config.prefix}تخيل <الوصف>* لتوليد صور بجودة سينمائية.\n` +
-      `│ 🎵 اكتب *${config.prefix}اغنية <الاسم>* لتحميل فوري للأغاني.\n` +
-      `│ 🎙️ اكتب *${config.prefix}صوت <النص>* لتحويل النص لصوت حقيقي.\n│\n` +
+      `│ 💀 اكتب *${config.prefix}قصة_رعب* أو *.صوت_مرعب* لقسم الرعب.\n│\n` +
       `╰────────────────────────────╯`;
     try {
       return await sock.sendMessage(jid, {
@@ -300,6 +330,7 @@ export async function handle(sock, m) {
       else if (assistantPerms.includes('قفل') && ['قفل_الجروب', 'فتح_الجروب', 'قفل_البوت', 'فتح_البوت'].includes(cmd.name)) allowedForAssistant = true;
       else if (assistantPerms.includes('ريستارت') && ['اعادة_تشغيل', 'restart', 'ريستارت'].includes(cmd.name)) allowedForAssistant = true;
       else if (assistantPerms.includes('تحديث') && ['حدث_نفسك', 'update_bot', 'تحديث_فوري'].includes(cmd.name)) allowedForAssistant = true;
+      else if (assistantPerms.includes('انضمام') && ['انضمام', 'join', 'دخول', 'ادخل'].includes(cmd.name)) allowedForAssistant = true;
     }
     if (!allowedForAssistant) {
       return reply(isAssistant ? '⛔ ليس لديك الصلاحية المحددة لاستخدام هذا الأمر.' : '⛔ هذا الأمر مخصص لمطور البوت فقط.');
@@ -359,8 +390,8 @@ export async function handle(sock, m) {
   };
 
   try {
-    const horrorReaction = getHorrorReaction();
-    react(horrorReaction || SECTION_REACTIONS[cmd.section] || '⚡');
+    const themeReaction = getThemeReaction();
+    react(themeReaction || SECTION_REACTIONS[cmd.section] || '⚡');
     await cmd.run(c);
   } catch (e) {
     console.error(`خطأ في تشغيل الأمر ${name}:`, e);
