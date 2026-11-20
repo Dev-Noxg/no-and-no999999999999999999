@@ -40,20 +40,47 @@ process.on('unhandledRejection', err => {
   console.error('UnhandledRejection:', err?.message || err);
 });
 
-// اعتراض console.error لمنع سيل رسائل Bad MAC من libsignal من إغراق سجلات السيرفر
+// اعتراض console.error لمنع سيل رسائل أخطاء التشفير الداخلية من libsignal من إغراق السجلات
 const originalConsoleError = console.error;
 console.error = function (...args) {
-  const first = String(args[0] || '');
+  const fullText = args.map(a => String(a?.stack || a?.message || a || '')).join(' ');
   if (
-    first.includes('Bad MAC') ||
-    first.includes('Failed to decrypt message') ||
-    first.includes('Session error:Error: Bad MAC') ||
-    first.includes('No matching sessions found')
+    fullText.includes('Session error') ||
+    fullText.includes('MessageCounterError') ||
+    fullText.includes('Key used already') ||
+    fullText.includes('Bad MAC') ||
+    fullText.includes('Failed to decrypt message') ||
+    fullText.includes('No matching sessions') ||
+    fullText.includes('Closing session') ||
+    fullText.includes('session_cipher') ||
+    fullText.includes('خطأ في الجلسة') ||
+    fullText.includes('خطأ في عداد الرسائل')
   ) {
-    return; // كتم التحذير لضمان هدوء السجلات واستقرار السيرفر
+    return; // كتم رسائل تشفير الواتساب الداخلية لمنع إغراق السجلات
   }
   originalConsoleError.apply(console, args);
 };
+
+// دالة لتنظيف مفاتيح الشاتات والجروبات غير المتزامنة لمنع تكرار خطأ عداد الرسائل (مع الحفاظ على كود الدخول creds.json)
+function cleanStaleRatchets() {
+  try {
+    if (fs.existsSync('session')) {
+      const files = fs.readdirSync('session');
+      let count = 0;
+      for (const f of files) {
+        if (f.startsWith('session-') || f.startsWith('sender-key-')) {
+          try {
+            fs.unlinkSync(path.join('session', f));
+            count++;
+          } catch {}
+        }
+      }
+      if (count > 0) {
+        console.log(`🧹 تم تنظيف ${count} من ملفات تشفير الرسائل القديمة لتجديد الاتصال دون تسجيل الخروج`);
+      }
+    }
+  } catch {}
+}
 import { loadCommands, uniqueCommands } from './lib/loader.js';
 import { handle } from './handler.js';
 import { onParticipants } from './lib/events.js';
@@ -160,6 +187,9 @@ async function start() {
         clearSessionFiles();
       }
     }
+
+    // تنظيف مفاتيح الشاتات القديمة التي تسبب تعليق التشفير (Bad MAC / Key used already) مع الاحتفاظ بالجلسة المسجلة
+    cleanStaleRatchets();
 
     const { state, saveCreds } = await useMultiFileAuthState('session');
 
