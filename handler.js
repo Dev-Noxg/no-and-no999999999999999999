@@ -65,7 +65,12 @@ export async function handle(sock, m) {
   if (!m.message) return;
   m.message = unwrap(m.message);
   const text = textOf(m.message).trim();
-  const isCmd = PREFIXES.some(p => text.startsWith(p)) || ['اوامر', 'الاوامر', 'menu', 'help'].includes(normAr(text));
+  const cleanFirstWord = text.split(/\s+/)[0]?.toLowerCase().replace(/^[./!#]/, '') || '';
+  const isCmd =
+    PREFIXES.some(p => text.startsWith(p)) ||
+    /^\d{1,2}$/.test(text) ||
+    ['اوامر', 'الاوامر', 'menu', 'help', 'قائمة', 'القائمة', 'بوت', 'bot'].includes(normAr(cleanFirstWord)) ||
+    commands.has(cleanFirstWord);
   if (m.key.fromMe && !isCmd) return;
   const jid = m.key.remoteJid;
   if (!jid || jid === 'status@broadcast' || jid.endsWith('@newsletter')) return;
@@ -105,27 +110,8 @@ export async function handle(sock, m) {
   const u = user(sender);
   const g = isGroup ? group(jid) : null;
 
-  const reply = (t, mentions) => {
+  const reply = async (t, mentions) => {
     console.log(`📤 [إرسال رد] إلى: ${jid} | المحتوى: ${String(t).slice(0, 30)}...`);
-    const activeTheme = getActiveTheme();
-    if (isCardImageEnabled()) {
-      const banner = getThemeBanner();
-      const payload = {
-        text: t,
-        contextInfo: {
-          externalAdReply: {
-            title: activeTheme.title,
-            body: activeTheme.subtitle,
-            thumbnailUrl: banner,
-            sourceUrl: 'https://whatsapp.com',
-            mediaType: 1,
-            renderLargerThumbnail: true,
-          },
-        },
-      };
-      if (mentions) payload.mentions = mentions;
-      return sock.sendMessage(jid, payload, { quoted: m });
-    }
     return sock.sendMessage(jid, mentions ? { text: t, mentions } : { text: t }, { quoted: m });
   };
   const send = content => sock.sendMessage(jid, content, { quoted: m });
@@ -255,12 +241,20 @@ export async function handle(sock, m) {
     return reply(menuContent);
   };
 
-  // فحص فتح القائمة أو مناداة البوت بدون بادئة
-  const normText = normAr(text);
-  if (['اوامر', 'الاوامر', 'menu', 'help', 'قائمة', 'القائمة'].includes(normText)) {
-    return sendMainMenu();
-  }
+  const sendSectionMenu = async (num) => {
+    const content = sectionMenu(num);
+    const banner = getThemeBanner();
+    try {
+      return await sock.sendMessage(jid, {
+        image: { url: banner },
+        caption: content,
+      }, { quoted: m });
+    } catch {}
+    return reply(content);
+  };
 
+  // فحص مناداة البوت
+  const normText = normAr(text);
   if (['بوت', 'bot', 'نو_اند_نو'].includes(normText)) {
     const theme = getActiveTheme();
     const banner = getThemeBanner();
@@ -284,37 +278,45 @@ export async function handle(sock, m) {
     }
   }
 
-  // تحديد البادئة المستخدمة
-  let usedPrefix = null;
+  // تحديد البادئة المستخدمة (يدعم الأوامر ببادئة وبدون بادئة)
+  let usedPrefix = '';
+  let cmdText = text;
   for (const p of PREFIXES) {
     if (text.startsWith(p)) {
       usedPrefix = p;
+      cmdText = text.slice(p.length).trim();
       break;
     }
   }
-  if (!usedPrefix) return;
 
-  const rawArgs = text.slice(usedPrefix.length).trim().split(/\s+/);
+  const rawArgs = cmdText.split(/\s+/);
   const name = (rawArgs.shift() || '').toLowerCase();
+  const normName = normAr(name);
   if (!name) return;
 
-  // فتح القسم مباشرة برقم مثل: .1 أو .8 أو /05
+  // 1. فتح القسم مباشرة برقم مثل: 4 أو .4 أو /04
   if (/^\d{1,2}$/.test(name)) {
     const num = parseInt(name);
     if (num >= 1 && num <= 16) {
-      return reply(sectionMenu(num));
+      return sendSectionMenu(num);
     }
   }
 
-  // عرض القوائم بالبادئة
-  if (['اوامر', 'الاوامر', 'menu', 'help', 'قائمة', 'القائمة'].includes(name)) {
-    return rawArgs[0] ? reply(sectionMenu(parseInt(rawArgs[0]))) : sendMainMenu();
+  // 2. عرض القوائم: اوامر / اوامر 4 / .اوامر / .اوامر 4 / قائمة / قائمة 4
+  if (['اوامر', 'الاوامر', 'menu', 'help', 'قائمة', 'القائمة'].includes(normName)) {
+    if (rawArgs[0] && /^\d{1,2}$/.test(rawArgs[0])) {
+      const num = parseInt(rawArgs[0]);
+      if (num >= 1 && num <= 16) {
+        return sendSectionMenu(num);
+      }
+    }
+    return sendMainMenu();
   }
 
-  // أمر البحث عن الأوامر
+  // 3. أمر البحث عن الأوامر
   if (['بحث', 'search', 'find'].includes(name)) {
     const q = rawArgs.join(' ').toLowerCase().trim();
-    if (!q) return reply(`اكتب اسم الأمر أو جزء منه للبحث.\nمثال: *${usedPrefix}بحث استثمار*`);
+    if (!q) return reply(`اكتب اسم الأمر أو جزء منه للبحث.\nمثال: *${usedPrefix || '.'}بحث استثمار*`);
     const all = uniqueCommands();
     const matched = all.filter(c =>
       c.name.includes(q) ||
@@ -322,10 +324,10 @@ export async function handle(sock, m) {
       (c.desc && c.desc.includes(q))
     );
     if (!matched.length) {
-      return reply(`❌ لم يتم العثور على أي أمر يطابق: "*${q}*". اكتب *${usedPrefix}اوامر* لتصفح الأقسام.`);
+      return reply(`❌ لم يتم العثور على أي أمر يطابق: "*${q}*". اكتب *${usedPrefix || '.'}اوامر* لتصفح الأقسام.`);
     }
     let res = `╭━━━〔 🔍 *نتائج البحث عن:* "${q}" 〕━━━╮\n│\n`;
-    res += matched.map(c => `│ ▫️ *${usedPrefix}${c.name}*\n│    ↳ ${c.desc || '—'}`).join('\n│\n');
+    res += matched.map(c => `│ ▫️ *${usedPrefix || '.'}${c.name}*\n│    ↳ ${c.desc || '—'}`).join('\n│\n');
     res += `\n│\n╰━━━━━━━━━━━━━━━━━━━━━╯`;
     return reply(res);
   }
