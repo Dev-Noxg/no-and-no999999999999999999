@@ -11,13 +11,30 @@ import { getActiveTheme, getThemeBanner, getThemeReaction, isCardImageEnabled } 
 
 const logger = pino({ level: 'silent' });
 const metaCache = new Map();
+const userCooldown = new Map();
+
+// تنظيف دوري للذاكرة كل 10 دقائق لضمان استقرار البوت في مئات المجموعات
+setInterval(() => {
+  const now = Date.now();
+  for (const [k, v] of metaCache.entries()) {
+    if (now - v.t > 120000) metaCache.delete(k);
+  }
+  for (const [k, t] of userCooldown.entries()) {
+    if (now - t > 10000) userCooldown.delete(k);
+  }
+}, 600000);
 
 export async function getMeta(sock, jid) {
   const c = metaCache.get(jid);
-  if (c && Date.now() - c.t < 30000) return c.meta;
-  const meta = await sock.groupMetadata(jid);
-  metaCache.set(jid, { t: Date.now(), meta });
-  return meta;
+  if (c && Date.now() - c.t < 60000) return c.meta;
+  try {
+    const meta = await sock.groupMetadata(jid);
+    metaCache.set(jid, { t: Date.now(), meta });
+    return meta;
+  } catch (e) {
+    if (c?.meta) return c.meta; // استخدام آخر بيانات مخزنة عند حدوث Rate Limit
+    throw e;
+  }
 }
 export const clearMeta = jid => metaCache.delete(jid);
 
@@ -388,6 +405,16 @@ export async function handle(sock, m) {
     settings: '⚙️',
     extra: '✨',
   };
+
+  // حماية ضد سبام الأوامر في المجموعات الكبيرة (1.2 ثانية كول داون لكل مستخدم عدا المطور)
+  if (!isOwner && !isAssistant) {
+    const userLastCmd = userCooldown.get(sender) || 0;
+    const now = Date.now();
+    if (now - userLastCmd < 1200) {
+      return; // تجاهل الرسائل المكررة بسرعة فائقة لحماية السيرفر
+    }
+    userCooldown.set(sender, now);
+  }
 
   try {
     const themeReaction = getThemeReaction();
