@@ -5,7 +5,7 @@ export default {
   developer: 'no and no',
   prefix: '/',
   botNumber: process.env.BOT_NUMBER || '201558086457',
-  owners: (process.env.OWNERS || '201558086457,201225622948,201924162879501').split(','),
+  owners: (process.env.OWNERS || '201225622948,201924162879501').split(','),
 
   // صورة البنر لقائمة الأوامر (يمكن تغييرها برابط صورتك المفضلة)
   menuBanner: process.env.MENU_BANNER || 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=1000&auto=format&fit=crop&q=80',
