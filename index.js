@@ -8,7 +8,6 @@ import { onParticipants } from './lib/events.js';
 import config from './config.js';
 import { makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion } from './lib/baileys.js';
 
-// ✅ استعادة الجلسة من متغير البيئة (للنشر على Railway/Heroku)
 if (process.env.SESSION_CREDS) {
   try {
     fs.mkdirSync('session', { recursive: true });
@@ -20,7 +19,6 @@ if (process.env.SESSION_CREDS) {
   }
 }
 
-// ✅ تفعيل كوكيز يوتيوب من متغير البيئة
 if (process.env.YOUTUBE_COOKIES && !fs.existsSync('cookies.txt')) {
   try {
     fs.writeFileSync('cookies.txt', process.env.YOUTUBE_COOKIES.trim(), 'utf8');
@@ -52,7 +50,20 @@ async function start() {
     console.log(`👑 المطور: ${config.developer}`);
     console.log(`========================================\n`);
 
+    // تنظيف أي جلسة قديمة غير مسجلة تلقائياً
+    if (fs.existsSync('session/creds.json')) {
+      try {
+        const raw = JSON.parse(fs.readFileSync('session/creds.json', 'utf8') || '{}');
+        if (!raw.registered) {
+          fs.rmSync('session', { recursive: true, force: true });
+        }
+      } catch {
+        fs.rmSync('session', { recursive: true, force: true });
+      }
+    }
+
     const { state, saveCreds } = await useMultiFileAuthState('session');
+
     let version = [2, 3000, 1015901307];
     try {
       const v = await fetchLatestBaileysVersion();
@@ -74,7 +85,6 @@ async function start() {
     sock.ev.on('connection.update', async (update) => {
       const { connection, lastDisconnect, qr } = update;
 
-      // طلب كود الربط إذا لم يكن مسجلاً بعد
       if (qr && !sock.authState.creds.registered && !pairingRequested) {
         pairingRequested = true;
         try {
@@ -102,7 +112,11 @@ async function start() {
         isConnecting = false;
         const code = lastDisconnect?.error?.output?.statusCode;
         if (code === DisconnectReason.loggedOut) {
-          console.log('🔴 تم تسجيل الخروج من واتساب. يرجى مسح مجلد session وإعادة الربط.');
+          console.log('🔴 انتهت صلاحية الكود أو الجلسة. جاري مسح session تلقائياً وإعادة طلب كود جديد...');
+          try {
+            fs.rmSync('session', { recursive: true, force: true });
+          } catch {}
+          setTimeout(start, 3000);
         } else {
           console.log('🔄 انقطع الاتصال، سيتم إعادة المحاولة بعد 4 ثوانٍ...');
           setTimeout(start, 4000);
