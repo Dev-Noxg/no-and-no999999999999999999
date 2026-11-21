@@ -1,3 +1,5 @@
+import fs from 'fs';
+import path from 'path';
 import { ask } from '../ai/ai.js';
 import { getThemeBanner } from '../../lib/theme_engine.js';
 import { rand, safeSendAudio } from '../../lib/utils.js';
@@ -59,15 +61,13 @@ export default [
     desc: 'إرسال مقطع صوتي مرعب جداً (همسات، صرخات، أو موسيقى رعب)',
     async run({ reply, react, sock, jid, m }) {
       await react('👁️');
-      const soundUrl = rand(SCARY_SOUNDS);
-      try {
-        const res = await fetch(soundUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } });
-        const buf = Buffer.from(await res.arrayBuffer());
+      const localAudio = path.join(process.cwd(), 'assets', 'audio', 'dark_web_theme.mp3');
+      if (fs.existsSync(localAudio)) {
+        const buf = fs.readFileSync(localAudio);
         await safeSendAudio(sock, jid, buf, { ptt: true }, m);
-        await react('💀');
-      } catch (e) {
-        reply(`❌ فشل استدعاء الصوت المرعب: ${e.message}`);
+        return await react('💀');
       }
+      reply('❌ تعذر العثور على ملف الصوت المرعب.');
     },
   },
 
@@ -150,6 +150,27 @@ export default [
       } else {
         reply(`💀 *الباب الثالث:* انزلقت في فخ أعدّه مارد الظلال واحتجزت في السرداب لساعة!\nخسرت 100 كاش لكنك ما زلت على قيد الحياة! 🩸`);
       }
+    },
+  },
+
+  // 6. أغنية الدارك ويب المرعبة كاملة
+  {
+    name: 'اغنية_دارك_ويب',
+    aliases: ['اغنية_رعب', 'دارك_ويب', 'dark_web_song', 'اغنية_الدارك_ويب', 'موسيقى_مرعبة'],
+    desc: 'تشغيل أغنية مرعبة ومخيفة كاملة من أعمق سراديب الدارك ويب والإنترنت المظلم',
+    async run({ reply, react, sock, jid, m }) {
+      await react('🩸');
+      await reply('⏳ جاري استخراج شريط أغنية الدارك ويب الملعونة من السيرفر المظلم...');
+      const localAudio = path.join(process.cwd(), 'assets', 'audio', 'dark_web_song.mp3');
+      const fallbackAudio = path.join(process.cwd(), 'assets', 'audio', 'dark_web_theme.mp3');
+      const songPath = fs.existsSync(localAudio) ? localAudio : fallbackAudio;
+
+      if (fs.existsSync(songPath)) {
+        const buf = fs.readFileSync(songPath);
+        await safeSendAudio(sock, jid, buf, { ptt: true }, m);
+        return await react('💀');
+      }
+      reply('❌ تعذر العثور على الأغنية.');
     },
   },
 ];
