@@ -9,6 +9,7 @@ import { numOf, ids, randInt, money, normAr, getRank, safeSendAudio } from './li
 import { downloadMediaMessage } from './lib/baileys.js';
 import { pushError } from './lib/logs.js';
 import { games } from './lib/state.js';
+import { humanize } from './lib/humanizer.js';
 import { getActiveTheme, getThemeBanner, getThemeReaction, isCardImageEnabled } from './lib/theme_engine.js';
 
 const logger = pino({ level: 'silent' });
@@ -78,34 +79,51 @@ export async function handle(sock, m) {
   if (!jid || jid === 'status@broadcast' || jid.endsWith('@newsletter')) return;
 
   const isGroup = jid.endsWith('@g.us');
+  const botNumbers = [sock.user?.id, sock.user?.lid, config.botNumber].filter(Boolean).map(numOf);
+
   const raw = (isGroup ? [m.key.participant, m.key.participantAlt] : [jid, m.key.remoteJidAlt]).filter(Boolean);
   let sender = raw.find(s => s.endsWith('@s.whatsapp.net')) || raw[0];
+  if (m.key.fromMe) {
+    sender = sock.user?.id || (jid.endsWith('@s.whatsapp.net') ? jid : (sender || ''));
+  }
   const sn = raw.map(numOf);
+  if (m.key.fromMe) sn.push(...botNumbers);
+  if (sender) sn.push(numOf(sender));
 
   let meta = null, isAdmin = false, isBotAdmin = false;
-  const pid = j => meta?.participants.find(p => ids(p).map(numOf).includes(numOf(j)))?.id || j;
-  const partOf = j => meta?.participants.find(p => ids(p).map(numOf).includes(numOf(j))) || null;
+  const pid = j => meta?.participants?.find(p => ids(p).map(numOf).includes(numOf(j)))?.id || j;
+  const partOf = j => meta?.participants?.find(p => ids(p).map(numOf).includes(numOf(j))) || null;
   const canon = j => {
     const p = partOf(j);
     return p ? (p.phoneNumber || p.jid || (p.id.endsWith('@s.whatsapp.net') ? p.id : j)) : j;
   };
 
   if (isGroup) {
-    try { meta = await getMeta(sock, jid); } catch { return; }
-    const sp = partOf(sender) || meta.participants.find(p => ids(p).map(numOf).some(n => sn.includes(n)));
+    try {
+      meta = await getMeta(sock, jid);
+    } catch (e) {
+      meta = { participants: [] };
+    }
+    const sp = partOf(sender) || meta?.participants?.find(p => ids(p).map(numOf).some(n => sn.includes(n)));
     if (sp) { isAdmin = !!sp.admin; sender = canon(sp.id); sn.push(numOf(sender)); }
     const me = [sock.user?.id, sock.user?.lid].filter(Boolean).map(numOf);
-    isBotAdmin = !!meta.participants.find(p => ids(p).map(numOf).some(n => me.includes(n)))?.admin;
+    isBotAdmin = !!meta?.participants?.find(p => ids(p).map(numOf).some(n => me.includes(n)))?.admin;
   }
 
-  const isOwner = sn.some(n => config.owners.includes(n));
+  const isOwner = Boolean(
+    m.key.fromMe ||
+    sn.some(n => config.owners.includes(n) || botNumbers.includes(n))
+  );
   const assistantData = db.settings.assistants?.[sender] || db.settings.assistants?.[numOf(sender) + '@s.whatsapp.net'] || null;
   const isAssistant = Boolean(assistantData);
   const assistantPerms = assistantData?.perms || [];
 
   const isBanned = (db.settings.banned || []).some(b => sn.includes(numOf(b)) || b === sender || b === numOf(sender));
   if (!isOwner && isBanned) return;
-  if (!isOwner && !isAssistant && db.settings.mode === 'private') return;
+  if (!isOwner && !isAssistant && db.settings.mode === 'private') {
+    console.log(`🔒 تم تجاهل أمر من ${sender} لأن البوت في الوضع الخاص.`);
+    return;
+  }
 
   const ci = getCI(m.message);
   const mentioned = (ci?.mentionedJid || []).map(canon);
@@ -113,11 +131,30 @@ export async function handle(sock, m) {
   const g = isGroup ? group(jid) : null;
 
   const reply = async (t, mentions) => {
-    console.log(`📤 [إرسال رد] إلى: ${jid} | المحتوى: ${String(t).slice(0, 30)}...`);
-    return sock.sendMessage(jid, mentions ? { text: t, mentions } : { text: t }, { quoted: m });
+    console.log(`📤 [إرسال رد] إلى: ${jid} | المحتوى: ${String(t).slice(0, 40)}...`);
+    await humanize(sock, jid, 'composing', 500, 1200);
+    const quoteOpt = (m.key.fromMe && !isGroup) ? {} : { quoted: m };
+    return sock.sendMessage(jid, mentions ? { text: t, mentions } : { text: t }, quoteOpt).catch(e => {
+      console.log('فشل الرد، إعادة المحاولة بدون اقتباس:', e.message);
+      return sock.sendMessage(jid, mentions ? { text: t, mentions } : { text: t });
+    });
   };
   const send = content => sock.sendMessage(jid, content, { quoted: m });
   const react = emoji => sock.sendMessage(jid, { react: { text: emoji, key: m.key } }).catch(() => {});
+
+  // ===== التوأم الرقمي للمطور في الخاص (Ghost Twin) =====
+  if (!isGroup && !m.key.fromMe && !isCmd && db.settings.ghostTwin && !isOwner) {
+    const ownerName = config.developer || 'no and no';
+    const now = Date.now();
+    const lastReply = userCooldown.get(jid) || 0;
+    if (now - lastReply > 300000) { // مرة كل 5 دقائق
+      userCooldown.set(jid, now);
+      await humanize(sock, jid, 'composing', 800, 1500);
+      const ghostReply = `👋 أهلاً بك يا صديقي! أنا التوأم الرقمي والمساعد الذكي للمطور *[ ${ownerName} ]* 🤖.\nالمطور غير متصل حالياً، اترك رسالتك وسيراها فور عودته، أو اكتب *.اوامر* لتجربة خدمات البوت!`;
+      await sock.sendMessage(jid, { text: ghostReply });
+      return;
+    }
+  }
 
   // ===== حماية المجموعات (قبل الأوامر) =====
   if (isGroup && !isAdmin && !isOwner) {
@@ -233,15 +270,9 @@ export async function handle(sock, m) {
     const startMsgTime = m.messageTimestamp ? Number(m.messageTimestamp) * 1000 : Date.now() - 40;
     const latency = Math.max(15, Math.min(300, Math.abs(Date.now() - startMsgTime)));
     const menuContent = mainMenu(m.pushName || 'صديقي', u, latency);
-    const banner = getThemeBanner();
-    try {
-      await sock.sendMessage(jid, {
-        image: { url: banner },
-        caption: menuContent,
-      }, { quoted: m });
-    } catch {
-      await reply(menuContent);
-    }
+    
+    // إرسال نص القائمة فوراً
+    await reply(menuContent);
 
     // إرسال أغنية الدارك ويب المرعبة مع القائمة تلقائياً
     try {
@@ -259,13 +290,6 @@ export async function handle(sock, m) {
 
   const sendSectionMenu = async (num) => {
     const content = sectionMenu(num);
-    const banner = getThemeBanner();
-    try {
-      return await sock.sendMessage(jid, {
-        image: { url: banner },
-        caption: content,
-      }, { quoted: m });
-    } catch {}
     return reply(content);
   };
 
