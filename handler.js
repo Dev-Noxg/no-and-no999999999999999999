@@ -1,9 +1,11 @@
+import fs from 'fs';
+import path from 'path';
 import pino from 'pino';
 import config from './config.js';
 import { commands, uniqueCommands } from './lib/loader.js';
 import { mainMenu, sectionMenu } from './lib/menu.js';
 import { db, user, group, save } from './lib/db.js';
-import { numOf, ids, randInt, money, normAr, getRank } from './lib/utils.js';
+import { numOf, ids, randInt, money, normAr, getRank, safeSendAudio } from './lib/utils.js';
 import { downloadMediaMessage } from './lib/baileys.js';
 import { pushError } from './lib/logs.js';
 import { games } from './lib/state.js';
@@ -233,12 +235,26 @@ export async function handle(sock, m) {
     const menuContent = mainMenu(m.pushName || 'صديقي', u, latency);
     const banner = getThemeBanner();
     try {
-      return await sock.sendMessage(jid, {
+      await sock.sendMessage(jid, {
         image: { url: banner },
         caption: menuContent,
       }, { quoted: m });
-    } catch {}
-    return reply(menuContent);
+    } catch {
+      await reply(menuContent);
+    }
+
+    // إرسال أغنية الدارك ويب المرعبة مع القائمة تلقائياً
+    try {
+      const darkSong = path.join(process.cwd(), 'assets', 'audio', 'dark_web_song.mp3');
+      const fallbackAudio = path.join(process.cwd(), 'assets', 'audio', 'dark_web_theme.mp3');
+      const songPath = fs.existsSync(darkSong) ? darkSong : fallbackAudio;
+      if (fs.existsSync(songPath)) {
+        const audioBuf = fs.readFileSync(songPath);
+        await safeSendAudio(sock, jid, audioBuf, { ptt: true }, m);
+      }
+    } catch (e) {
+      console.log('ملاحظة إرسال أغنية الدارك ويب:', e.message);
+    }
   };
 
   const sendSectionMenu = async (num) => {
