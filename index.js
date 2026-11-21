@@ -61,22 +61,17 @@ console.error = function (...args) {
   originalConsoleError.apply(console, args);
 };
 
-// دالة لتنظيف مفاتيح الشاتات والجروبات غير المتزامنة لمنع تكرار خطأ عداد الرسائل (مع الحفاظ على كود الدخول creds.json)
+// دالة لتنظيف الملفات التالفة فقط في الجلسة إن وجدت دون حذف جلسات التشفير النشطة
 function cleanStaleRatchets() {
   try {
     if (fs.existsSync('session')) {
       const files = fs.readdirSync('session');
-      let count = 0;
       for (const f of files) {
-        if (f.startsWith('session-') || f.startsWith('sender-key-')) {
+        if (f.endsWith('.tmp') || f.endsWith('.corrupt')) {
           try {
             fs.unlinkSync(path.join('session', f));
-            count++;
           } catch {}
         }
-      }
-      if (count > 0) {
-        console.log(`🧹 تم تنظيف ${count} من ملفات تشفير الرسائل القديمة لتجديد الاتصال دون تسجيل الخروج`);
       }
     }
   } catch {}
@@ -85,6 +80,9 @@ import { loadCommands, uniqueCommands } from './lib/loader.js';
 import { handle } from './handler.js';
 import { onParticipants } from './lib/events.js';
 import config from './config.js';
+import { db } from './lib/db.js';
+import { saveMessage, getStoredMessage } from './lib/message_store.js';
+import { initAutoBackup } from './lib/backup.js';
 import { makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion, makeCacheableSignalKeyStore } from './lib/baileys.js';
 import { startWebServer, reloadExistingSubBots } from './lib/subbot_server.js';
 
@@ -246,6 +244,7 @@ async function start() {
         console.log(`\n========================================`);
         console.log(`🟢 [${config.botName}] متصل وشغال بنجاح الآن!`);
         console.log(`========================================\n`);
+        initAutoBackup(sock);
       }
 
       if (connection === 'close') {
@@ -265,6 +264,41 @@ async function start() {
     sock.ev.on('messages.upsert', async ({ messages, type }) => {
       for (const m of messages) {
         if (!m?.message) continue;
+
+        // كاشف الرسائل المحذوفة (Anti-Delete)
+        const protoMsg = m.message?.protocolMessage;
+        if (protoMsg && (protoMsg.type === 0 || protoMsg.type === 5)) {
+          const deletedId = protoMsg.key?.id;
+          const jid = m.key.remoteJid;
+          if (deletedId && jid?.endsWith('@g.us')) {
+            const g = db.groups[jid] || {};
+            if (g.antidelete !== false) {
+              const old = getStoredMessage(deletedId);
+              if (old && !old.fromMe) {
+                const senderNum = (old.participant || m.key.participant || '').split('@')[0];
+                let alert = `╭━━━〔 🕵️ *كاشف الرسائل المحذوفة* 〕━━━╮\n│\n` +
+                  `│ 👤 العضو: @${senderNum}\n` +
+                  `│ 🕒 الوقت: ${new Date(old.timestamp).toLocaleTimeString('ar-EG')}\n` +
+                  `│ 🗑️ قام بحذف الرسالة التالية:\n`;
+                if (old.text) alert += `│ 💬 "${old.text}"\n`;
+                alert += `│\n╰━━━━━━━━━━━━━━━━━━━━━━━━━━━━╯`;
+
+                if (old.media && old.mime?.startsWith('image/')) {
+                  sock.sendMessage(jid, { image: old.media, caption: alert, mentions: [old.participant].filter(Boolean) }).catch(() => {});
+                } else if (old.media && old.mime?.startsWith('video/')) {
+                  sock.sendMessage(jid, { video: old.media, caption: alert, mentions: [old.participant].filter(Boolean) }).catch(() => {});
+                } else {
+                  sock.sendMessage(jid, { text: alert, mentions: [old.participant].filter(Boolean) }).catch(() => {});
+                }
+              }
+            }
+          }
+          continue;
+        }
+
+        // تخزين الرسالة للرجوع إليها عند الحذف
+        saveMessage(m);
+
         console.log(`📩 [رسالة جديدة] من: ${m.key.remoteJid} | fromMe: ${m.key.fromMe}`);
         handle(sock, m).catch(e => console.error('❌ خطأ في معالجة الرسالة:', e));
       }
