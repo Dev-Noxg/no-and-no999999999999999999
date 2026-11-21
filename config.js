@@ -4,8 +4,8 @@ export default {
   botName: 'no and no',
   developer: 'no and no',
   prefix: '/',
-  botNumber: process.env.BOT_NUMBER || '201558086457',
-  owners: (process.env.OWNERS || '201558086457,201225622948,201924162879501').split(','),
+  botNumber: process.env.BOT_NUMBER || '201036042537',
+  owners: (process.env.OWNERS || '201036042537,201225622948,201924162879501').split(','),
 
   // قناة واتساب الرسمية للتحديثات والأوامر الجديدة
   channelLink: 'https://whatsapp.com/channel/0029VbBvRjeHrDZmSEd8sV12',
